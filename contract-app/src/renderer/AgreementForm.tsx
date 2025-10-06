@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+/* eslint-disable react/jsx-props-no-spreading */
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   Alert,
   Button,
@@ -12,15 +19,19 @@ import {
   message,
   Select,
 } from 'antd';
-import { MinusCircleOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import {
+  MinusCircleOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+} from '@ant-design/icons';
 import dayjs, { type Dayjs } from 'dayjs';
 import type {
   AgreementDefaults,
   FormAgreementValues,
-  LegacyArtistEntry,
   PersistedAgreement,
   PdfInput,
   Project,
+  RoyaltyPartyEntry,
 } from '../common/types';
 import { useConfig } from './ConfigContext';
 
@@ -47,28 +58,6 @@ const FALLBACK_FORM_VALUES: FormAgreementValues = {
   featuredArtists: [],
   licensors: [],
   royaltyParties: [],
-  artists: [],
-};
-
-const ensureLegacyArtists = (
-  artists: FormAgreementValues['artists'],
-): LegacyArtistEntry[] => {
-  if (!Array.isArray(artists)) {
-    return [];
-  }
-  return artists.map((artist) => ({
-    stageName: artist?.stageName ?? '',
-    legalName: artist?.legalName ?? '',
-    address: artist?.address ?? '',
-    email: artist?.email ?? '',
-    role: artist?.role ?? 'Artist',
-    royaltyShare:
-      typeof artist?.royaltyShare === 'number'
-        ? artist.royaltyShare
-        : Number.isFinite(Number(artist?.royaltyShare))
-          ? Number(artist?.royaltyShare)
-          : undefined,
-  }));
 };
 
 const parseDate = (value: unknown): Dayjs | null => {
@@ -97,12 +86,13 @@ const toFormValues = (
     royaltyParties: Array.isArray(fallback.royaltyParties)
       ? fallback.royaltyParties.map((item) => ({ ...item }))
       : [],
-    artists: ensureLegacyArtists(fallback.artists),
   };
+
+  const { releaseDate, ...restSource } = source;
 
   const merged: FormAgreementValues = {
     ...clonedFallback,
-    ...source,
+    ...restSource,
     mainArtists: Array.isArray(source.mainArtists)
       ? [...source.mainArtists]
       : clonedFallback.mainArtists,
@@ -115,40 +105,58 @@ const toFormValues = (
     royaltyParties: Array.isArray(source.royaltyParties)
       ? source.royaltyParties.map((item) => ({ ...item }))
       : clonedFallback.royaltyParties,
-    artists: ensureLegacyArtists(source.artists ?? clonedFallback.artists),
   };
 
   merged.releaseDate =
-    parseDate(source.releaseDate) ?? parseDate(clonedFallback.releaseDate) ?? null;
+    parseDate(releaseDate) ?? parseDate(clonedFallback.releaseDate) ?? null;
   merged.releaseDateISO =
     typeof source.releaseDateISO === 'string'
       ? source.releaseDateISO
-      : clonedFallback.releaseDateISO ?? null;
+      : (clonedFallback.releaseDateISO ?? null);
+
+  // Handle legacy 'artists' field for backward compatibility
+  if (Array.isArray(source.artists) && source.artists.length > 0) {
+    if (!merged.licensors || merged.licensors.length === 0) {
+      merged.licensors = source.artists.map((artist) => ({
+        stageName: artist.stageName,
+        legalName: artist.legalName,
+        address: artist.address,
+        email: artist.email,
+      }));
+    }
+    if (!merged.royaltyParties || merged.royaltyParties.length === 0) {
+      merged.royaltyParties = source.artists.map((artist) => ({
+        displayName: artist.stageName,
+        legalName: artist.legalName,
+        role: artist.role,
+        royaltyShare: artist.royaltyShare,
+        email: artist.email,
+      }));
+    }
+  }
 
   return merged;
 };
 
 const toPersisted = (values: FormAgreementValues): PersistedAgreement => {
-  const artists = ensureLegacyArtists(values.artists);
   const releaseDateIso = (() => {
     if (dayjs.isDayjs(values.releaseDate)) {
       return values.releaseDate.format('YYYY-MM-DD');
     }
-    if (typeof values.releaseDate === 'string' && values.releaseDate.trim()) {
-      const parsed = dayjs(values.releaseDate);
-      return parsed.isValid()
-        ? parsed.format('YYYY-MM-DD')
-        : values.releaseDate.trim();
-    }
     return values.releaseDateISO ?? null;
   })();
 
-  return {
+  const persisted: PersistedAgreement = {
     ...values,
     releaseDate: releaseDateIso,
     releaseDateISO: releaseDateIso,
-    artists,
   };
+
+  if ('artists' in persisted) {
+    delete persisted.artists;
+  }
+
+  return persisted;
 };
 
 const toPdfInput = (values: FormAgreementValues): PdfInput => {
@@ -166,9 +174,7 @@ const toPdfInput = (values: FormAgreementValues): PdfInput => {
 
 const cloneFormValues = (values: FormAgreementValues): FormAgreementValues => ({
   ...values,
-  mainArtists: Array.isArray(values.mainArtists)
-    ? [...values.mainArtists]
-    : [],
+  mainArtists: Array.isArray(values.mainArtists) ? [...values.mainArtists] : [],
   featuredArtists: Array.isArray(values.featuredArtists)
     ? [...values.featuredArtists]
     : [],
@@ -178,30 +184,32 @@ const cloneFormValues = (values: FormAgreementValues): FormAgreementValues => ({
   royaltyParties: Array.isArray(values.royaltyParties)
     ? values.royaltyParties.map((entry) => ({ ...entry }))
     : [],
-  artists: ensureLegacyArtists(values.artists),
   releaseDate: values.releaseDate ? dayjs(values.releaseDate) : null,
 });
 
 const computeShareMetrics = (values: FormAgreementValues) => {
   const labelShare = Number(values.labelShare ?? 0);
-  const artists = ensureLegacyArtists(values.artists);
+  const royaltyParties = values.royaltyParties ?? [];
   let invalid = false;
 
-  const artistTotal = artists.reduce((sum, artist) => {
-    const numeric = Number(artist?.royaltyShare ?? 0);
-    if (!Number.isFinite(numeric)) {
-      invalid = true;
-      return sum;
-    }
-    return sum + numeric;
-  }, 0);
+  const artistTotal = royaltyParties.reduce(
+    (sum: number, party: RoyaltyPartyEntry) => {
+      const numeric = Number(party?.royaltyShare ?? 0);
+      if (!Number.isFinite(numeric)) {
+        invalid = true;
+        return sum;
+      }
+      return sum + numeric;
+    },
+    0,
+  );
 
   const total = Number.parseFloat((labelShare + artistTotal).toFixed(2));
 
   if (invalid) {
     return {
       total,
-      error: 'Enter numeric royalty shares for all artists.',
+      error: 'Enter numeric royalty shares for all parties.',
     } as const;
   }
 
@@ -228,7 +236,9 @@ export default function AgreementForm({
   const [form] = Form.useForm<FormAgreementValues>();
   const [shareTotal, setShareTotal] = useState(0);
   const [shareError, setShareError] = useState<string | null>(null);
-  const [previewStatus, setPreviewStatus] = useState<'idle' | 'generating' | 'success' | 'error'>('idle');
+  const [previewStatus, setPreviewStatus] = useState<
+    'idle' | 'generating' | 'success' | 'error'
+  >('idle');
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [isPreviewStale, setIsPreviewStale] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -254,7 +264,9 @@ export default function AgreementForm({
     return toFormValues(defaultsFromConfig, FALLBACK_FORM_VALUES);
   }, [config]);
 
-  const clearTimer = (ref: React.MutableRefObject<ReturnType<typeof setTimeout> | null>) => {
+  const clearTimer = (
+    ref: React.MutableRefObject<ReturnType<typeof setTimeout> | null>,
+  ) => {
     if (ref.current) {
       clearTimeout(ref.current);
       ref.current = null;
@@ -269,7 +281,7 @@ export default function AgreementForm({
 
   const resetOperationState = useCallback(() => {
     clearAllTimers();
-    opIdRef.current += 1; // invalidate pending operations
+    opIdRef.current += 1;
     lastValidOpIdRef.current = null;
     validatedSnapshotRef.current = null;
     setPreviewStatus('idle');
@@ -298,7 +310,9 @@ export default function AgreementForm({
           { projectPath: activeProject.path, agreementData: payload },
         );
         if (!result?.success) {
-          messageApi.error(`Failed to auto-save: ${result?.message ?? 'Unknown error'}`);
+          messageApi.error(
+            `Failed to auto-save: ${result?.message ?? 'Unknown error'}`,
+          );
         }
       } catch (error) {
         const errorMessage =
@@ -491,7 +505,7 @@ export default function AgreementForm({
           return;
         }
         if (result?.success) {
-          hydrateForm(result.data as PersistedAgreement | null);
+          hydrateForm(result.data);
           if (result.data) {
             messageApi.success('Project data loaded.');
           } else {
@@ -499,7 +513,9 @@ export default function AgreementForm({
           }
         } else {
           hydrateForm(null);
-          messageApi.error(`Failed to load project data: ${result?.message ?? 'Unknown error'}`);
+          messageApi.error(
+            `Failed to load project data: ${result?.message ?? 'Unknown error'}`,
+          );
         }
       } catch (error) {
         if (!cancelled) {
@@ -522,33 +538,44 @@ export default function AgreementForm({
       clearAllTimers();
       opIdRef.current += 1;
     };
-  }, [activeProject.path, hydrateForm, messageApi, clearAllTimers, resetOperationState]);
+  }, [
+    activeProject.path,
+    hydrateForm,
+    messageApi,
+    clearAllTimers,
+    resetOperationState,
+  ]);
+
+  const handleManualSave = useCallback(() => {
+    if (activeProject.path !== currentProjectPathRef.current) {
+      return;
+    }
+
+    const values = form.getFieldsValue(true);
+    const snapshot = cloneFormValues(values);
+
+    const { total, error } = computeShareMetrics(snapshot);
+    setShareTotal(total);
+    setShareError(error);
+
+    if (error) {
+      messageApi.error(error);
+      return;
+    }
+
+    const savedOpId = opIdRef.current + 1;
+    opIdRef.current = savedOpId;
+    lastValidOpIdRef.current = savedOpId;
+    validatedSnapshotRef.current = snapshot;
+
+    queueSave(snapshot, savedOpId, true);
+    messageApi.success('Project saved manually.');
+  }, [activeProject.path, form, messageApi, queueSave]);
 
   useEffect(() => {
     if (!window.electron?.ipcRenderer) {
       return undefined;
     }
-
-    const boundPath = activeProject.path;
-    const handleManualSave = () => {
-      if (boundPath !== currentProjectPathRef.current) {
-        return;
-      }
-      const snapshot = cloneFormValues(form.getFieldsValue(true) as FormAgreementValues);
-      const { total, error } = computeShareMetrics(snapshot);
-      setShareTotal(total);
-      setShareError(error);
-      if (error) {
-        messageApi.error(error);
-        return;
-      }
-      const savedOpId = opIdRef.current + 1;
-      opIdRef.current = savedOpId;
-      lastValidOpIdRef.current = savedOpId;
-      validatedSnapshotRef.current = snapshot;
-      queueSave(snapshot, savedOpId, true);
-      messageApi.success('Project saved manually.');
-    };
 
     const disposer = window.electron.ipcRenderer.on(
       'menu:save-agreement',
@@ -558,10 +585,10 @@ export default function AgreementForm({
     return () => {
       disposer?.();
     };
-  }, [activeProject.path, form, messageApi, queueSave]);
+  }, [handleManualSave]);
 
   const handleManualGenerate = useCallback(() => {
-    const snapshot = cloneFormValues(form.getFieldsValue(true) as FormAgreementValues);
+    const snapshot = cloneFormValues(form.getFieldsValue(true));
     const { total, error } = computeShareMetrics(snapshot);
     setShareTotal(total);
     setShareError(error);
@@ -578,7 +605,7 @@ export default function AgreementForm({
   }, [form, messageApi, queuePreview, queueSave]);
 
   const handleFinalGenerate = useCallback(() => {
-    const snapshot = cloneFormValues(form.getFieldsValue(true) as FormAgreementValues);
+    const snapshot = cloneFormValues(form.getFieldsValue(true));
     const { total, error } = computeShareMetrics(snapshot);
     setShareTotal(total);
     setShareError(error);
@@ -595,7 +622,8 @@ export default function AgreementForm({
   }, [form, messageApi, queueSave, runPdfGeneration]);
 
   const handleRetryPreview = useCallback(() => {
-    const snapshot = validatedSnapshotRef.current ?? lastSuccessfulSnapshotRef.current;
+    const snapshot =
+      validatedSnapshotRef.current ?? lastSuccessfulSnapshotRef.current;
     const opId = lastValidOpIdRef.current ?? lastSuccessfulOpIdRef.current;
     if (!snapshot || opId === null) {
       return;
@@ -619,7 +647,7 @@ export default function AgreementForm({
           disabled={isProjectLoading}
         >
           <Collapse
-            defaultActiveKey={['1', '2', '3', '4']}
+            defaultActiveKey={['1', '2', '3', '4', '5', '6']}
             bordered={false}
             className="form-sections"
           >
@@ -739,15 +767,32 @@ export default function AgreementForm({
                 </Form.Item>
               </div>
             </Collapse.Panel>
-            <Collapse.Panel header="Artists" key="4">
-              <Form.List name="artists">
+            <Collapse.Panel header="Release Artists" key="4">
+              <div className="form-grid">
+                <Form.Item
+                  className="form-grid__item form-grid__item--half"
+                  label="Main Artists"
+                  name="mainArtists"
+                >
+                  <Select mode="tags" placeholder="Add main artists" />
+                </Form.Item>
+                <Form.Item
+                  className="form-grid__item form-grid__item--half"
+                  label="Featured Artists"
+                  name="featuredArtists"
+                >
+                  <Select mode="tags" placeholder="Add featured artists" />
+                </Form.Item>
+              </div>
+            </Collapse.Panel>
+            <Collapse.Panel header="Licensors" key="5">
+              <Form.List name="licensors">
                 {(fields, { add, remove }) => (
                   <div className="artist-list">
                     <Typography.Paragraph className="muted-text">
-                      Add everyone who should appear on the agreement and define
-                      their royalty share.
+                      Add all parties who are licensing content for this
+                      release.
                     </Typography.Paragraph>
-
                     {fields.map(({ key, name, ...restField }) => (
                       <div key={key} className="artist-card">
                         <div className="form-grid form-grid--artist">
@@ -756,16 +801,14 @@ export default function AgreementForm({
                             className="form-grid__item form-grid__item--half"
                             name={[name, 'stageName']}
                             label="Stage Name"
-                            rules={[{ required: true, message: 'Missing artist name' }]}
                           >
-                            <Input placeholder="Artist Name" />
+                            <Input placeholder="Artist/Entity Name" />
                           </Form.Item>
                           <Form.Item
                             {...restField}
                             className="form-grid__item form-grid__item--half"
                             name={[name, 'legalName']}
                             label="Legal Name"
-                            rules={[{ required: true, message: 'Missing legal name' }]}
                           >
                             <Input placeholder="Legal Name" />
                           </Form.Item>
@@ -774,39 +817,103 @@ export default function AgreementForm({
                             className="form-grid__item form-grid__item--full"
                             name={[name, 'address']}
                             label="Address"
-                            rules={[{ required: true, message: 'Missing address' }]}
                           >
                             <Input placeholder="Address" />
+                          </Form.Item>
+                          <Form.Item
+                            {...restField}
+                            className="form-grid__item form-grid__item--full"
+                            name={[name, 'email']}
+                            label="Email"
+                            rules={[{ type: 'email' }]}
+                          >
+                            <Input placeholder="Email" />
+                          </Form.Item>
+                          <div className="form-grid__item form-grid__item--full artist-card__actions">
+                            <Button
+                              type="text"
+                              danger
+                              icon={<MinusCircleOutlined />}
+                              onClick={() => remove(name)}
+                            >
+                              Remove Licensor
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    <Form.Item>
+                      <Button
+                        type="dashed"
+                        onClick={() => add()}
+                        block
+                        icon={<PlusOutlined />}
+                      >
+                        Add Licensor
+                      </Button>
+                    </Form.Item>
+                  </div>
+                )}
+              </Form.List>
+            </Collapse.Panel>
+            <Collapse.Panel header="Royalty Splits" key="6">
+              <Form.List name="royaltyParties">
+                {(fields, { add, remove }) => (
+                  <div className="artist-list">
+                    <Typography.Paragraph className="muted-text">
+                      Define how royalties are shared between all parties.
+                    </Typography.Paragraph>
+                    {fields.map(({ key, name, ...restField }) => (
+                      <div key={key} className="artist-card">
+                        <div className="form-grid form-grid--artist">
+                          <Form.Item
+                            {...restField}
+                            className="form-grid__item form-grid__item--half"
+                            name={[name, 'displayName']}
+                            label="Display Name"
+                            rules={[{ required: true }]}
+                          >
+                            <Input placeholder="Name on statement" />
+                          </Form.Item>
+                          <Form.Item
+                            {...restField}
+                            className="form-grid__item form-grid__item--half"
+                            name={[name, 'legalName']}
+                            label="Legal Name"
+                          >
+                            <Input placeholder="Legal Name" />
                           </Form.Item>
                           <Form.Item
                             {...restField}
                             className="form-grid__item form-grid__item--half"
                             name={[name, 'email']}
                             label="Email"
-                            rules={[
-                              {
-                                required: true,
-                                type: 'email',
-                                message: 'Invalid email address',
-                              },
-                            ]}
+                            rules={[{ type: 'email' }]}
                           >
-                            <Input placeholder="Email" />
+                            <Input placeholder="Email for statement" />
                           </Form.Item>
                           <Form.Item
                             {...restField}
                             className="form-grid__item form-grid__item--one-quarter"
                             name={[name, 'role']}
                             label="Role"
-                            initialValue="Main Artist"
-                            rules={[{ required: true, message: 'Missing role' }]}
+                            initialValue="Artist"
                           >
                             <Select>
-                              <Select.Option value="Main Artist">Main Artist</Select.Option>
-                              <Select.Option value="Composer">Composer</Select.Option>
-                              <Select.Option value="Producer">Producer</Select.Option>
-                              <Select.Option value="Remixer">Remixer</Select.Option>
-                              <Select.Option value="Featured Artist">Featured Artist</Select.Option>
+                              <Select.Option value="Artist">
+                                Artist
+                              </Select.Option>
+                              <Select.Option value="Producer">
+                                Producer
+                              </Select.Option>
+                              <Select.Option value="Composer">
+                                Composer
+                              </Select.Option>
+                              <Select.Option value="Remixer">
+                                Remixer
+                              </Select.Option>
+                              <Select.Option value="Label">Label</Select.Option>
+                              <Select.Option value="Other">Other</Select.Option>
                             </Select>
                           </Form.Item>
                           <Form.Item
@@ -814,7 +921,7 @@ export default function AgreementForm({
                             className="form-grid__item form-grid__item--one-quarter"
                             name={[name, 'royaltyShare']}
                             label="Royalty Share (%)"
-                            rules={[{ required: true, message: 'Missing share' }]}
+                            rules={[{ required: true }]}
                           >
                             <InputNumber
                               min={0}
@@ -823,20 +930,19 @@ export default function AgreementForm({
                               style={{ width: '100%' }}
                             />
                           </Form.Item>
-                          <div className="form-grid__item form-grid__item--one-quarter artist-card__actions">
+                          <div className="form-grid__item form-grid__item--full artist-card__actions">
                             <Button
                               type="text"
                               danger
                               icon={<MinusCircleOutlined />}
                               onClick={() => remove(name)}
                             >
-                              Remove Artist
+                              Remove Royalty Party
                             </Button>
                           </div>
                         </div>
                       </div>
                     ))}
-
                     <Form.Item>
                       <Button
                         type="dashed"
@@ -844,7 +950,7 @@ export default function AgreementForm({
                         block
                         icon={<PlusOutlined />}
                       >
-                        Add Artist
+                        Add Royalty Party
                       </Button>
                     </Form.Item>
                   </div>

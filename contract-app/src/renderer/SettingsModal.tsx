@@ -46,6 +46,7 @@ export default function SettingsModal({
     const defaults = config?.agreementDefaults ?? {};
     form.setFieldsValue({
       ...defaults,
+      releaseDate: defaults.releaseDate ?? '',
       templateDirectory: config?.templateDirectory ?? '',
     });
   }, [config, form, open]);

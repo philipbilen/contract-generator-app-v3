@@ -76,9 +76,11 @@ export type PersistedAgreement = AgreementDefaults;
  */
 export type FormAgreementValues = Omit<PersistedAgreement, 'releaseDate'> & {
   releaseDate?: Dayjs | null;
-  royaltyParties?: Array<Omit<RoyaltyPartyEntry, 'royaltyShare'> & {
-    royaltyShare?: number | null;
-  }>;
+  royaltyParties?: Array<
+    Omit<RoyaltyPartyEntry, 'royaltyShare'> & {
+      royaltyShare?: number | null;
+    }
+  >;
 };
 
 /**
