@@ -1,0 +1,520 @@
+\documentclass[10pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{newpxtext}
+\usepackage{newpxmath}
+\usepackage{geometry}
+\geometry{margin=1in}
+\usepackage{microtype}
+\usepackage{setspace}
+\setstretch{1.1}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\setlist{nosep}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{hyperref}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{lastpage}
+\usepackage{graphicx}
+\usepackage[most]{tcolorbox}
+\usepackage{etoolbox}
+
+% --- STYLING AND MACROS (Generally, do not edit) ---
+
+% Boxed signature blocks
+\newtcolorbox{sigbox}{
+  colback=black!2, colframe=black!50,
+  boxrule=0.4pt, arc=0pt,
+  left=8pt,right=8pt,top=6pt,bottom=6pt
+}
+
+\newcommand{\sigline}[1]{\mbox{#1}\quad\hrulefill}
+\newcommand{\sigtext}[1]{\mbox{#1}}
+
+\newcommand{\sigblock}[2]{%
+  \begin{sigbox}
+    \textbf{For and on behalf of #1}\par\vspace{0.6em}
+    \small
+    \sigline{Signature:}\par\vspace{0.6em}
+    \sigtext{Name: #2}\par\vspace{0.6em}
+    \sigline{Date:}
+    \normalsize
+  \end{sigbox}
+}
+
+\definecolor{ELaccent}{RGB}{255,122,0}
+\newtcolorbox{sigboxlabel}{
+  enhanced, colback=black!1, boxrule=0pt, frame empty,
+  borderline west={4.4pt}{0pt}{ELaccent},
+  left=9pt,right=8pt,top=6pt,bottom=6pt, arc=0pt
+}
+
+\newcommand{\sigblocklabel}[2]{%
+  \begin{sigboxlabel}
+    \textbf{For and on behalf of #1}\par\vspace{0.9em}
+    \small
+    \sigline{Signature:}\par\vspace{0.6em}
+    \sigtext{Name: #2}\par\vspace{0.6em}
+    \sigline{Date:}
+    \normalsize
+  \end{sigboxlabel}
+}
+
+% Section formatting
+\titleformat{\section}{\large\bfseries}{\thesection.\ }{0.5em}{\MakeUppercase}
+\titleformat{\subsection}{\normalfont\bfseries}{\thesubsection.\ }{0.5em}{}
+\titleformat{\subsubsection}{\bfseries}{\thesubsubsection.\ }{0.5em}{}
+\setcounter{secnumdepth}{3}
+\titleformat*{\section}{\large\bfseries\MakeUppercase}
+\titleformat*{\subsection}{\bfseries}
+\titleformat*{\subsubsection}{\bfseries}
+
+\newcommand{\clause}[2]{\subsection*{\makebox[1.5em][l]{#1} \, #2}}
+\renewcommand{\arraystretch}{1.2}
+\newcolumntype{R}{>{\raggedright\arraybackslash}X}
+
+% Page header / footer
+% --- DYNAMIC ARTIST HANDLING ---
+\newcommand{\artistlist}{}
+\newcommand{\royaltylist}{}
+\newcommand{\signaturelist}{}
+\newcommand{\primaryartistline}{}
+\newcommand{\featuredartistline}{}
+\newcounter{artistcount}
+\newcounter{featuredartistcount}
+\newcounter{sigcolumn}
+
+% Command helpers for populating agreement metadata tables.
+\newcommand{\addmainartist}[1]{%
+  \stepcounter{artistcount}%
+  \ifnum\value{artistcount}=1
+    \appto{\primaryartistline}{#1}%
+  \else
+    \appto{\primaryartistline}{, #1}%
+  \fi
+}
+
+\newcommand{\addfeaturedartist}[1]{%
+  \stepcounter{featuredartistcount}%
+  \ifnum\value{featuredartistcount}=1
+    \appto{\featuredartistline}{#1}%
+  \else
+    \appto{\featuredartistline}{, #1}%
+  \fi
+}
+
+% \addlicensor{Stage Name}{Legal Name}{Address}{Contact Email}
+\newcommand{\addlicensor}[4]{%
+  \appto{\artistlist}{%
+    \textbf{#1} & #3 & \href{mailto:#4}{#4} \\
+    \emph{\small{#2}} & & \\
+  }%
+  \stepcounter{sigcolumn}%
+  \ifnum\value{sigcolumn}=1
+    \appto{\signaturelist}{%
+      \sigblock{Artist (#1)}{#2}%
+    }%
+  \else
+    \appto{\signaturelist}{%
+      & \sigblock{Artist (#1)}{#2} \\[1.5em]%
+    }%
+    \setcounter{sigcolumn}{0}%
+  \fi
+}
+
+% \addroyaltyparty{Display Name}{Legal Name}{Role}{Share}{Royalty Email}
+\newcommand{\addroyaltyparty}[5]{%
+  \appto{\royaltylist}{%
+    \textbf{#1} & #3 & #4\% & \href{mailto:#5}{#5}\\
+    \emph{\small{#2}} & & & \\
+  }%
+}
+
+% Legacy helper retaining previous behaviour.
+% \addartist{Stage Name}{Legal Name}{Address}{Contact Email}{Royalty Share}{Role}
+\newcommand{\addartist}[6]{%
+  \addmainartist{#1}%
+  \addlicensor{#1}{#2}{#3}{#4}%
+  \addroyaltyparty{#1}{#2}{#6}{#5}{#4}%
+}
+
+% --- CONFIGURATION FOR THE CURRENT AGREEMENT ---
+\ifcsundef{configfile}{%
+  \newcommand{\configfile}{agreement-config.tex}%
+}{}
+\input{\configfile}
+
+% Graceful fallbacks keep the template compilable even if data is missing.
+\ifcsundef{labelName}{\def\labelName{[Label Name]}}{}
+\ifcsundef{labelLegalName}{\def\labelLegalName{[Label Legal Name]}}{}
+\ifcsundef{labelAddress}{\def\labelAddress{[Label Address]}}{}
+\ifcsundef{labelEmail}{\def\labelEmail{[Label Email]}}{}
+\ifcsundef{labelSignatory}{\def\labelSignatory{[Authorised Signatory]}}{}
+\ifcsundef{distroPartner}{\def\distroPartner{[Distribution Partner]}}{}
+\ifcsundef{distroFee}{\def\distroFee{--}}{}
+\ifcsundef{adaFee}{\def\adaFee{--}}{}
+\ifcsundef{labelShare}{\def\labelShare{--}}{}
+\ifcsundef{releaseTitle}{\def\releaseTitle{[Release Title]}}{}
+\ifcsundef{releaseDate}{\def\releaseDate{[Release Date]}}{}
+\ifcsundef{releaseUPC}{\def\releaseUPC{[UPC]}}{}
+\ifcsundef{releaseISRC}{\def\releaseISRC{[ISRC]}}{}
+
+% Release artist lines auto-populate from the helper commands unless explicitly set.
+\ifcsundef{releaseMainArtistLine}{%
+  \ifcsundef{releasePrimaryArtistLine}{%
+    \ifdefempty{\primaryartistline}{%
+      \def\releaseMainArtistLine{[Main Artist(s)]}%
+    }{% 
+      \edef\releaseMainArtistLine{\primaryartistline}%
+    }%
+  }{% 
+    \edef\releaseMainArtistLine{\releasePrimaryArtistLine}%
+  }%
+}{}
+\ifcsundef{releasePrimaryArtistLine}{%
+  \let\releasePrimaryArtistLine\releaseMainArtistLine
+}{}
+\ifcsundef{releaseFeaturedArtistLine}{%
+  \ifcsundef{releaseFeaturedArtists}{%
+    \ifdefempty{\featuredartistline}{%
+      \def\releaseFeaturedArtistLine{}%
+    }{% 
+      \edef\releaseFeaturedArtistLine{\featuredartistline}%
+    }%
+  }{% 
+    \edef\releaseFeaturedArtistLine{\releaseFeaturedArtists}%
+  }%
+}{}
+
+% Ensure signature table layout stays valid for an odd number of artists.
+\ifnum\value{sigcolumn}=1
+  \appto{\signaturelist}{ & \\[1.5em]}%
+  \setcounter{sigcolumn}{0}%
+\fi
+
+% PDF Metadata
+\hypersetup{
+    colorlinks=true, urlcolor=blue,
+    pdfauthor={\labelName\ (\labelLegalName)},
+    pdftitle={\labelName\ Master Licence Agreement}
+}
+
+% Page header / footer
+\setlength{\headheight}{15pt}
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\labelName\ Master Licence Agreement}
+\lfoot{\labelName\ Master Licence Agreement}
+\rhead{Page\ \thepage\ of\ \pageref{LastPage}}
+
+\begin{document}
+
+% --- MAIN DOCUMENT STRUCTURE ---
+
+\begin{center}
+\includegraphics[width=4cm]{logo.png}\\[2em]
+{\LARGE \textbf{\MakeUppercase{\labelName} MASTER LICENCE AGREEMENT}}
+\end{center}
+
+\vspace{0.75em}
+\noindent
+\begin{tabularx}{\textwidth}{l R}
+\toprule
+\textbf{Effective Date:} & The later of the signature dates below.\\
+\midrule
+\textbf{Label:} & \labelName\ (\labelLegalName)\\
+& \labelAddress\\
+& \href{mailto:\labelEmail}{\labelEmail}\\
+\midrule
+\textbf{Licensors:} & As listed in \textbf{Schedule~A} (each a Licensor of their respective share).\\
+\bottomrule
+\end{tabularx}
+
+% Sections 1 through 13 remain unchanged from your original file
+% ... (Recitals, Definitions, Grant of Rights, etc.) ...
+% ================= 1. RECITALS =================
+\section*{1. RECITALS}
+
+\subsection*{1.1}
+The individuals and/or entities listed in Schedule~A (collectively, the Artist) control the sound recording~(s) identified therein (each a Master), together with all remixes, edits, alternate versions, and mixes thereof delivered by the Artist in connection with the Release, and wish to grant the Label an exclusive licence to exploit the Master~(s) on the terms below.
+
+\subsection*{1.2}
+The Label will distribute the Master\~(s\~) exclusively via \distroPartner\ \~(the Distribution Partner\~) and its authorized sub-distributors, including ADA.\@
+
+\subsection*{1.3}
+Royalties from exploitation of the Master\~(s\~) will be paid by the Distribution Partner directly to each licensor as per the Master Split Sheet referenced in Schedule~A (the Direct Pay Model).
+
+% ================= 2. KEY DEFINITIONS =================
+\section*{2. KEY DEFINITIONS}
+
+\begin{tabularx}{\textwidth}{l R}
+\toprule
+\textbf{TERM} & \textbf{DEFINITION}\\
+\midrule
+Artist & The individuals and/or entities listed in Schedule~A, collectively referred to as the Artist, each of whom is a licensor of their respective share of the Master~(s).\\
+ADA & Warner Music's Alternative Distribution Alliance or any successor.\\
+Composition & The underlying musical work (melody, lyrics, harmony). Publishing is out of scope.\\
+Distribution Partner & \distroPartner\ and its authorized sub-distributors and service providers.\\
+Master~(s) & Each sound recording identified in Schedule~A, together with all remixes, edits, alternate versions, and mixes thereof delivered by the Artist in connection with the Release.\\
+Net Royalty Receipts & All monies received by the Distribution Partner from exploiting the Master~(s), after the deduction of any and all fees charged by its own sub-distributors and service providers (e.g.,\ ADA), but before the deduction of the Distribution Partner's own fee. \\
+\addlinespace[0.6em] % Adds a little space between rows
+NetToCompany & The final amount payable to the Label and all Artist-side Licensors. This is calculated by taking the Net Royalty Receipts and subtracting the Distribution Partner's digital distribution fee (currently \distroFee). \\
+Label Share / Artist Share & The fixed percentages of NetToCompany allocated to the Label and to all Artist-side Licensors as expressly stated in Schedule~A.\\
+Term & Commencing on the Effective Date and continuing in perpetuity, meaning for the full duration of copyright in each Master, including all renewals and extensions thereof, subject only to early termination under Section~12.\\
+Territory & The World and the Universe, in any and all media and formats now known or hereafter devised.\\
+\bottomrule
+\end{tabularx}
+
+% ================= 3. GRANT OF RIGHTS =================
+\section*{3. GRANT OF RIGHTS (EXCLUSIVE LICENCE)}
+
+\clause{3.1}{Exclusive Licence}
+The Artist grants the Label the exclusive right, during the Term and throughout the Territory, to exploit the Master~(s) for digital audio and audiovisual distribution and to authorize the Distribution Partner to do the same. This includes downloads, streams, and use on user-generated content platforms.
+
+\clause{3.2}{Included Rights}
+The grant includes the rights to reproduce, distribute, publicly perform, and make available the Master~(s); to create and use reasonable edits and clips for promotion; and to use the Artist's name~(s) and approved likenesses/biographies in connection with marketing the Master~(s).
+
+\clause{3.3}{Reserved Rights}
+All rights not expressly granted are reserved to the Artist, including all rights in the Composition~(s).
+
+% ================= 4. TERM AND TERRITORY =================
+\section*{4. TERM AND TERRITORY}
+
+\clause{4.1}{Term}
+The Term of this licence shall be as defined in Section~2.
+
+\clause{4.2}{Territory}
+The Territory shall be as defined in Section~2.
+
+% ================= 5. FINANCIAL TERMS =================
+\section*{5. FINANCIAL TERMS}
+
+\clause{5.1}{Payment Flow}
+DSPs pay ADA;\ ADA pays the Distribution Partner; the Distribution Partner deducts its \distroFee\ fee from Net Royalty Receipts to calculate NetToCompany.
+
+\clause{5.2}{Splits}
+NetToCompany is divided into the Label Share and the Artist Share as specified in Schedule~A.
+
+\clause{5.3}{Direct Pay Model}
+The Distribution Partner pays Artist-side Licensors directly based on the details they provide. The Label receives its Label Share directly. The Label does not collect or distribute the Artist Share and is not liable for payment delays by the Distribution Partner.
+
+\clause{5.4}{Accounting Schedule}
+Payments and statements follow the Distribution Partner's schedule, which is currently semi-annual (April/October) with a USD~100 minimum payment threshold.
+
+\clause{5.5}{No Recoupment by Label}
+The Label will provide cover artwork and Spotify canvas free of charge, and these costs are not recoupable against the Artist Share.
+
+\clause{5.6}{Neighbouring Rights}
+For the Label's share of neighbouring rights income, the Distribution Partner retains 50\% of net receipts and pays the balance to the Label. Performers must claim their share directly from their respective societies.
+
+\clause{5.7}{Third-Party Licences (Sync)}
+For sync licences arranged by the Distribution Partner, it retains 40\% of its net income. The balance flows into NetToCompany for splitting per Section~5.2.
+
+\clause{5.8}{Taxes}
+Each party is responsible for its own taxes.
+
+\clause{5.9}{Assigned Slices; Direct Pay}
+If any Licensor assigns or directs a portion of their Artist Share to a third party (e.g.,\ management or collaborator), and such party is listed as a Licensor in Schedule~A, the Distribution Partner shall pay that portion \emph{directly} to the assignee under the Direct Pay Model. The Label has no responsibility for distributing Artist Share amounts between Licensors.
+
+% ================= 6. DELIVERY & ACCEPTANCE =================
+\section*{6. DELIVERY \& ACCEPTANCE}
+
+\clause{6.1}{Artist Deliverables}
+The Artist will deliver all required assets at no charge, including: final audio files (WAV), complete and accurate metadata, a signed Master Split Sheet, and contact details for all Licensors for royalty statements. The Label will be responsible for creating and delivering artwork.
+
+\clause{6.2}{Distributor Onboarding}
+For actual payment, each Licensor must complete the Distribution Partner's separate payee onboarding and invoice template (providing banking/tax details). The Label does not handle this data.
+
+\clause{6.3}{Quality Control}
+The Label may reject materials that do not meet technical, legal, or DSP style guide requirements, and will provide written reasons. The Artist will have 10 business days to cure any defects.
+
+% ================= 7. CREDITS =================
+\section*{7. CREDITS}
+
+\clause{7.1}{Roles}
+Credits must use standard industry roles. ``Display Roles'' (Primary Artist, Featured Artist, Remixer) determine the artist line on DSPs.
+
+\clause{7.2}{Moral Rights}
+The Label will use commercially reasonable efforts to ensure accurate crediting in metadata provided to DSPs.
+
+% ================= 8. MARKETING \& APPROVALS =================
+\section*{8. MARKETING \& APPROVALS}
+
+\clause{8.1}{Artwork Process}
+The Label shall create the official cover artwork for the Master~(s) in a collaborative process with the Artist. The final artwork is intended to be a fusion of the Artist's vision and the Label's established brand identity. The Artist is encouraged to provide input, concepts, and wishes (``Creative Input'') to guide the creative process.
+
+\clause{8.2}{Standard Timeline}
+For releases scheduled more than three (3) weeks in advance:
+\begin{enumerate}[label=~(\alph*)]
+\item \textbf{Consultation:} The Label's visual team will consult with the Artist on the initial Creative Input.
+\item \textbf{Drafts \& Revisions:} The Label will provide the Artist with at least one (1) draft for review. The Artist is entitled to one (1) round of reasonable revisions.
+\item \textbf{Feedback:} The Artist must provide any feedback or revision requests in writing within three (3) business days of receiving a draft.
+\end{enumerate}
+
+\clause{8.3}{Expedited Timeline}
+For releases scheduled less than three (3) weeks in advance (``Expedited Releases''):
+\begin{enumerate}[label=~(\alph*)]
+\item \textbf{Reference Stash:} The Artist shall be granted access to a curated ``stash'' of prior drafts, sketches, or templates maintained by the Label to serve as the creative foundation.
+\item \textbf{Final Version:} The Label will provide a final or near-final artwork version for approval.
+\item \textbf{Limited Adjustments:} Artist feedback will be restricted to minor adjustments only (e.g.,\ text edits, typographical corrections, minor colour shifts). No substantial redesigns will be undertaken at this stage.
+\end{enumerate}
+
+\clause{8.4}{Final Approval}
+Final written approval from the Artist is required for all artwork. Such approval shall not be unreasonably withheld, particularly if the artwork aligns with the Artist's initial Creative Input (if any), the Label's brand identity, and the applicable process. If the Artist does not provide written objections within three (3) business days of receiving the final version for approval, the artwork shall be deemed approved.
+
+\clause{8.5}{Promotional Use}
+The Label may use the Artist's name~(s), approved likeness~(es), approved biography~(ies), and reasonable clips from the Master~(s) for marketing and promotional purposes.
+
+% ================= 9. WARRANTIES, REPRESENTATIONS \& INDEMNITIES =================
+\section*{9. WARRANTIES, REPRESENTATIONS \& INDEMNITIES}
+
+\clause{9.1}{Artist Warranties, Representations, and Covenants}
+Each Artist warrants, represents, and covenants to the Label that:
+\begin{enumerate}[label=~(\alph*)]
+\item \textbf{Authority and Title:} They have the full and exclusive right, title, and authority to enter into this Agreement and to grant all rights specified herein.
+\item \textbf{Clearances and Consents:} The Master~(s) are original works, and all necessary consents, licences, and permissions have been obtained from any and all third parties whose performances, compositions, samples, or other materials are embodied in the Master~(s).
+\item \textbf{No Infringement:} The exploitation of the Master~(s) by the Label as permitted under this Agreement will not violate any law or infringe upon the copyright, trademark, privacy, publicity, or any other rights of any third party.
+\item \textbf{Contributor Payments and Responsibility:} The Master Split Sheet referenced in Schedule~A represents the complete and final agreement for royalty allocation among all contributors entitled to a share. Each Artist shall be solely responsible for any and all other payments, fees, or sums due to any party engaged by them in connection with the creation of the Master~(s) (including but not limited to producers, musicians, or vocalists paid on a flat-fee or other non-royalty basis).
+\end{enumerate}
+
+\clause{9.2}{Indemnity}
+The Artist will indemnify and hold the Label, its licensees, and its distribution partners harmless from any and all claims, losses, liabilities, damages, and expenses (including reasonable legal fees) arising from any breach of the warranties, representations, or covenants made in Section~9.1.
+
+\clause{9.3}{Takedown Right}
+Upon notice of a credible claim of infringement or a breach of warranty, the Label shall have the right, without limiting its other rights, to temporarily take down the affected Master~(s) from all platforms while the issue is being resolved by the Artist.
+
+% ================= 10. ACCOUNTING \& AUDIT =================
+\section*{10. ACCOUNTING \& AUDIT}
+
+\clause{10.1}{Direct Pay Statements}
+Due to the Direct Pay Model, the Distribution Partner (not the Label) is responsible for providing statements to Artist-side Licensors.
+
+\clause{10.2}{Information Sharing}
+The Label will, on reasonable request, provide the Artist with copies of relevant statements it receives from the Distribution Partner related to the Master~(s).
+
+\clause{10.3}{Disputes}
+Any objection to a statement must be made in writing within 12~months of its issuance date.
+
+% ================= 11. OWNERSHIP =================
+\section*{11. OWNERSHIP}
+
+\clause{11.1}{Masters}
+The Artist retains full ownership of the copyright in the Master~(s), subject to the exclusive licence granted herein.
+
+\clause{11.2}{Artwork Ownership}
+The official artwork for the Master~(s) shall be created by the Label and shall remain the Label's sole and exclusive property. The Label grants the Artist a non-exclusive, revocable licence to use this artwork solely to promote the Master~(s) during the Term, in the form provided by the Label without alteration.
+
+% ================= 12. TERMINATION AND REVERSION =================
+\section*{12. TERMINATION AND REVERSION OF RIGHTS}
+
+\clause{12.1}{Artist's Right to Terminate for Inactivity}
+Notwithstanding the perpetual Term, the Artist may terminate the licence for a specific Master by providing the Label with written notice if said Master has been unavailable on all major digital service providers (DSPs) for a period of sixty (60) consecutive days for reasons solely within the Label's or its Distribution Partner's direct control. Upon receiving such notice, the Label shall have thirty (30) days to cure the issue by making the Master available again. If the issue is not cured within this period, the termination shall become effective.
+
+\clause{12.2}{Process}
+Upon confirmed termination, the Label will instruct the Distribution Partner to issue a takedown of the Master~(s) within 30~days.
+
+\clause{12.3}{Survival}
+Sections intended to survive termination (including warranties, indemnities, and payment obligations for accrued royalties) shall do so.
+
+% ================= 13. MISCELLANEOUS =================
+\section*{13. MISCELLANEOUS}
+
+\clause{13.1}{Advances \& Cross-Collateralization}
+As specified in Schedule~A (Default: None).
+
+\clause{13.2}{Assignment}
+Neither party may assign this Agreement without the other's consent, though the Label may assign it to a successor of its business.
+
+\clause{13.3}{Governing Law}
+Malta.
+
+\clause{13.4}{Entire Agreement}
+This document (including Schedules) constitutes the entire agreement. Amendments must be in a signed writing. E-signatures are permitted.
+
+\clause{13.5}{Counterparts}
+This Agreement may be executed in any number of counterparts, each of which when executed and delivered shall constitute a duplicate original, but all the counterparts shall together constitute one and the same agreement. A signature delivered by electronic means (such as a PDF scan) shall be deemed an original signature.
+
+
+% ================= SCHEDULE A =================
+\newpage
+\section*{SCHEDULE A}
+This schedule details the royalty allocation and metadata for the Master~(s) governed by this Agreement. All royalty shares listed below are percentages of ``NetToCompany'' as defined in Section~2.
+
+\vspace{1.5em}
+
+\noindent
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+\multicolumn{2}{@{}l}{\textbf{RELEASE IDENTIFICATION}}\\
+\midrule
+Release Title: & \emph{\releaseTitle}\\
+Main Artist~(s): & \releaseMainArtistLine\\
+\ifdefempty{\releaseFeaturedArtistLine}{}{
+Featured Artist~(s): & \releaseFeaturedArtistLine\\
+}
+Release Date: & \releaseDate\\
+Label: & \labelName\\
+UPC / ISRC: & \releaseUPC\ / \releaseISRC\\
+\bottomrule
+\end{tabularx}
+
+\vspace{0.5em}
+\noindent\footnotesize\emph{Clarification: All mixes, edits, alternate versions, and remixes of the above Track~(s) delivered by the Artist for exploitation under the Release shall be deemed ``Masters'' for purposes of this Agreement.}\normalsize
+
+\vspace{1.5em}
+\noindent\textbf{LICENSOR CONTACT DETAILS}\par
+\vspace{0.5em}
+\noindent
+\begin{tabularx}{\textwidth}{@{} l l X @{}}
+    \toprule
+    \textbf{Licensor / Legal Name} & \textbf{Postal Address} & \textbf{Email}\\
+    \midrule
+    \artistlist
+    \bottomrule
+\end{tabularx}%
+\normalsize
+
+\vspace{0.5em}
+\noindent\footnotesize\emph{Note: Engeloop stores only the royalty statement email for statements/onboarding. Bank/tax info is collected directly by Loudkult.} \normalsize
+
+\vspace{1.5em}
+\noindent\textbf{MASTER ROYALTY ALLOCATION}\par
+\vspace{0.5em}
+\noindent
+\begin{tabularx}{\textwidth}{@{} l l l X @{}}
+\toprule
+\textbf{Party / Legal Name} & \textbf{Role} & \textbf{Share}~(\%\~) & \textbf{Royalty Email}\\
+\midrule
+\textbf{\labelName} & Label & \labelShare\% & \href{mailto:\labelEmail}{\labelEmail}\\
+\emph{\small{\labelLegalName}} & & & \\
+\royaltylist
+\midrule
+\textbf{TOTAL} & & \textbf{100\%} & \\
+\bottomrule
+\end{tabularx}
+
+% ================= SIGNATURES =================
+\newpage
+\section*{SIGNATURES}
+\noindent\small The parties have executed this Agreement as of the dates set forth below.\normalsize
+
+\vspace{1.5em}
+
+\subsection*{For the Label}
+\noindent\begin{minipage}{\textwidth}
+    \sigblocklabel{Label (\labelName)}{\labelSignatory}
+\end{minipage}
+
+\vspace{2em}
+
+\subsection*{For the Artists \& Representatives}
+\noindent
+\begin{tabularx}{\textwidth}{@{}X@{\hspace{1em}}X@{}}
+  \signaturelist
+\end{tabularx}
+
+\end{document}

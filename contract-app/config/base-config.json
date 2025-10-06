@@ -1,0 +1,23 @@
+{
+  "agreementDefaults": {
+    "labelName": "Engeloop Records",
+    "labelLegalName": "Algorythm Limited",
+    "labelAddress": "Waterpoint Apartments, A6102, SLM 1020, Sliema, Malta",
+    "labelEmail": "business@engeloop.com",
+    "labelSignatory": "Philip Bilén",
+    "distroPartner": "LoudKult AB",
+    "distroFee": 15,
+    "adaFee": 10,
+    "labelShare": 60,
+    "releaseTitle": "",
+    "releaseDate": "",
+    "releaseDateISO": "",
+    "releaseUPC": "",
+    "releaseISRC": "",
+    "mainArtists": [],
+    "featuredArtists": [],
+    "licensors": [],
+    "royaltyParties": []
+  },
+  "templateDirectory": ""
+}
